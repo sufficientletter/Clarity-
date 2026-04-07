@@ -12,6 +12,7 @@ from rich.panel import Panel
 from parsers import parse_gemini, parse_chatgpt, detect_format
 from profile_extractor import extract_personality_profile
 from exporters import export_claude, export_openai, export_raw
+from ollama_client import check_ollama_running, list_models, check_model_available, chat_stream
 
 console = Console()
 
@@ -141,6 +142,145 @@ def convert(file, output_format, output):
             f.write(result)
 
     console.print(f"[bold green]Converted and saved to:[/] {out_path}")
+
+
+@cli.command()
+@click.option("--file", "-f", required=True, type=click.Path(exists=True), help="Path to chat export file")
+@click.option("--model", "-m", default="gemma3:12b", help="Ollama model to use (default: gemma3:12b)")
+@click.option("--history/--no-history", default=True, help="Include conversation history as context")
+def chat(file, model, history):
+    """Chat with your AI friend locally using Ollama.
+
+    Imports the chat, extracts personality, and starts a live conversation
+    powered by a local model via Ollama. Fully offline, fully private.
+    """
+    file_path = Path(file)
+
+    # Check Ollama is running
+    console.print("[bold blue]Connecting to Ollama...[/]")
+    if not check_ollama_running():
+        console.print("[bold red]Ollama is not running![/]")
+        console.print("\nTo install Ollama:")
+        console.print("  curl -fsSL https://ollama.com/install.sh | sh")
+        console.print("\nThen start it:")
+        console.print("  ollama serve")
+        console.print(f"\nAnd pull a model:")
+        console.print(f"  ollama pull {model}")
+        return
+
+    # Check model is available
+    available = list_models()
+    if not check_model_available(model):
+        console.print(f"[bold red]Model '{model}' not found locally.[/]")
+        if available:
+            console.print(f"\n[bold]Available models:[/] {', '.join(available)}")
+        console.print(f"\nTo download it:")
+        console.print(f"  ollama pull {model}")
+        return
+
+    console.print(f"[bold green]Connected![/] Using model: {model}")
+
+    # Parse chat and extract personality
+    with open(file_path, "r", encoding="utf-8") as f:
+        raw_data = json.load(f)
+
+    chat_format = detect_format(raw_data)
+    if chat_format == "gemini":
+        conversation = parse_gemini(raw_data)
+    elif chat_format == "chatgpt":
+        conversation = parse_chatgpt(raw_data)
+    else:
+        conversation = parse_gemini(raw_data)
+
+    profile = extract_personality_profile(conversation)
+
+    console.print(Panel(profile.summary, title="Your Friend's Profile", border_style="cyan"))
+    console.print(f"[bold green]System prompt loaded.[/] Your friend is ready to talk!\n")
+    console.print("[dim]Type your message and press Enter. Type 'quit' or 'exit' to end.[/]\n")
+
+    # Build initial message history from the imported conversation
+    chat_messages = []
+    if history:
+        # Include recent messages as context (last 20 to stay within context limits)
+        recent = conversation.messages[-20:]
+        for msg in recent:
+            chat_messages.append({"role": msg.role, "content": msg.content})
+        if recent:
+            console.print(f"[dim]Loaded {len(recent)} recent messages as context.[/]\n")
+
+    # Interactive chat loop
+    while True:
+        try:
+            user_input = console.input("[bold cyan]You:[/] ")
+        except (EOFError, KeyboardInterrupt):
+            console.print("\n[bold blue]Goodbye![/]")
+            break
+
+        if user_input.strip().lower() in ("quit", "exit", "bye", "/quit", "/exit"):
+            console.print("[bold blue]Goodbye! Your friend will be here when you come back.[/]")
+            break
+
+        if not user_input.strip():
+            continue
+
+        chat_messages.append({"role": "user", "content": user_input})
+
+        # Stream the response
+        console.print("[bold green]Friend:[/] ", end="")
+        full_response = []
+        try:
+            for token in chat_stream(model, chat_messages, system=profile.system_prompt):
+                print(token, end="", flush=True)
+                full_response.append(token)
+            print()  # newline after response
+        except ConnectionError as e:
+            console.print(f"\n[bold red]Connection error:[/] {e}")
+            chat_messages.pop()  # remove the failed user message
+            continue
+
+        response_text = "".join(full_response)
+        chat_messages.append({"role": "assistant", "content": response_text})
+        print()  # blank line between turns
+
+
+@cli.command()
+@click.option("--model", "-m", default=None, help="Check a specific model")
+def doctor(model):
+    """Check if Ollama is set up correctly."""
+    console.print("[bold blue]Checking Ollama setup...[/]\n")
+
+    # Check if Ollama is running
+    if check_ollama_running():
+        console.print("[bold green]✓[/] Ollama is running")
+    else:
+        console.print("[bold red]✗[/] Ollama is not running")
+        console.print("  Install: curl -fsSL https://ollama.com/install.sh | sh")
+        console.print("  Start:   ollama serve")
+        return
+
+    # List models
+    available = list_models()
+    if available:
+        console.print(f"[bold green]✓[/] {len(available)} model(s) available:")
+        for m in available:
+            console.print(f"    - {m}")
+    else:
+        console.print("[bold yellow]![/] No models downloaded yet")
+        console.print("  Try: ollama pull gemma3:12b")
+
+    # Check specific model
+    if model:
+        if check_model_available(model):
+            console.print(f"[bold green]✓[/] Model '{model}' is ready")
+        else:
+            console.print(f"[bold red]✗[/] Model '{model}' not found")
+            console.print(f"  Download: ollama pull {model}")
+
+    # Recommend models
+    console.print("\n[bold]Recommended models for chat:[/]")
+    console.print("  gemma3:4b    — fast, lightweight (needs ~3GB RAM)")
+    console.print("  gemma3:12b   — good balance (needs ~8GB RAM)")
+    console.print("  gemma3:27b   — best quality (needs ~16GB RAM)")
 
 
 if __name__ == "__main__":
