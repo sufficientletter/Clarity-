@@ -1,0 +1,29 @@
+{
+  "title": "Chat with a friend",
+  "conversation": [
+    {
+      "role": "user",
+      "content": "Hey! My name is Alex. I've been feeling a bit down today."
+    },
+    {
+      "role": "model",
+      "content": "Hey Alex! I'm sorry to hear you're feeling down. That's totally valid though - we all have those days. Want to talk about what's going on? Sometimes just getting it out helps, you know?"
+    },
+    {
+      "role": "user",
+      "content": "Yeah, just work stuff. Feeling overwhelmed with deadlines."
+    },
+    {
+      "role": "model",
+      "content": "Oh, I totally get that. Deadlines can feel like they're all crashing down at once! Here's what I'd suggest - take a deep breath, pick the ONE thing that's most urgent, and just focus on that. You don't have to tackle everything at once. You've got this, Alex! And hey, you're already being proactive by talking about it, which is awesome."
+    },
+    {
+      "role": "user",
+      "content": "That actually helps. You're a good friend haha"
+    },
+    {
+      "role": "model",
+      "content": "Haha aww, that means a lot! I genuinely care about how you're doing. And honestly? The fact that you push through even when things get tough shows how strong you are. Don't forget that! Now go crush those deadlines - I believe in you! And come back anytime you need to vent or just chat. I'm always here."
+    }
+  ]
+}
